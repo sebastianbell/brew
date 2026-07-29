@@ -85,15 +85,19 @@ module Homebrew
         YAML
 
         tests_yml = render_workflow_template(
-          "tap-new-tests.yml", branch:, github_packages: args.github_packages?, root_url:
+          "tap-new-tests.yml", tap:, branch:, github_packages: args.github_packages?, root_url:
         )
         publish_yml = render_workflow_template(
-          "tap-new-publish.yml", branch:, github_packages: args.github_packages?
+          "tap-new-publish.yml", tap:, branch:, github_packages: args.github_packages?
+        )
+        autobump_yml = render_workflow_template(
+          "tap-new-autobump.yml", tap:, branch:, github_packages: args.github_packages?
         )
         (tap.path/".github/workflows").mkpath
         write_path(tap, ".github/dependabot.yml", dependabot_yml)
         write_path(tap, ".github/workflows/tests.yml", tests_yml)
         write_path(tap, ".github/workflows/publish.yml", publish_yml)
+        write_path(tap, ".github/workflows/autobump.yml", autobump_yml)
 
         unless args.no_git?
           cd tap.path do |path|
@@ -139,15 +143,17 @@ module Homebrew
       sig {
         params(
           filename:        String,
+          tap:             Tap,
           branch:          String,
           github_packages: T::Boolean,
           root_url:        T.nilable(String),
         ).returns(String)
       }
-      def render_workflow_template(filename, branch:, github_packages:, root_url: nil)
+      def render_workflow_template(filename, tap:, branch:, github_packages:, root_url: nil)
         workflow = (HOMEBREW_LIBRARY_PATH.parent.parent/".github/workflows"/filename).read
         workflow.sub!("name: tap-new tests template", "name: brew test-bot")
         workflow.sub!("name: tap-new publish template", "name: brew pr-pull")
+        workflow.sub!("name: tap-new autobump template", "name: brew bump")
         if filename == "tap-new-tests.yml"
           workflow.sub!("on:\n  workflow_dispatch:\n", <<~YAML)
             on:
@@ -157,8 +163,15 @@ module Homebrew
               pull_request:
           YAML
         end
+        # Pick a random 5 minute block in which to execute the autobump action to avoid peak GitHub loads
+        hour = Random.rand(23)
+        minute = Random.rand(11) * 5
+        workflow.gsub!("at 01:45 UTC") { "at #{hour}:#{minute} UTC" }
+        workflow.gsub!("\"45 1 * * *\"") { "#{minute} #{hour} * * *" }
+
         workflow.sub!("    if: github.repository == ''\n", "")
         workflow.gsub!("TAP_NEW_BRANCH") { branch }
+        workflow.gsub!("TAP_NEW_TAP") { tap.name }
         workflow.gsub!("TAP_NEW_ROOT_URL_ARGUMENT") { root_url ? " --root-url=#{root_url}" : "" }
         unless github_packages
           workflow.gsub!(

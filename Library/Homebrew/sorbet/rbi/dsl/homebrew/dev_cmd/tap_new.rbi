@@ -11,6 +11,9 @@ class Homebrew::DevCmd::TapNew
 end
 
 class Homebrew::DevCmd::TapNew::Args < Homebrew::CLI::Args
+  sig { returns(T::Boolean) }
+  def autobump?; end
+
   sig { returns(T.nilable(String)) }
   def branch; end
 
