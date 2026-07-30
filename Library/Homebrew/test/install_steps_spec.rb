@@ -896,6 +896,81 @@ RSpec.describe Homebrew::InstallSteps do
     Homebrew::InstallSteps::Runner.new(context: clang_context).run(steps)
   end
 
+  describe "configures PHP" do
+    let(:steps) do
+      Homebrew::InstallSteps::DSL.build do
+        configure_php
+      end
+    end
+    let(:homebrew_prefix) { root/"homebrew" }
+    let(:pear_prefix) { root/"prefix/share/php@8.4/pear" }
+    let(:pecl_path) { homebrew_prefix/"lib/php/pecl" }
+    let(:ext_config_path) { homebrew_prefix/"etc/php/8.4/conf.d/ext-opcache.ini" }
+    let(:php_context) do
+      root_path = root
+      context.tap do |value|
+        value.define_singleton_method(:name) { "php@8.4" }
+        value.define_singleton_method(:version) { Version.new("8.4.1") }
+        value.define_singleton_method(:pkgshare) { root_path/"prefix/share/php@8.4" }
+        value.define_singleton_method(:opt_prefix) { root_path/"opt/php@8.4" }
+        value.define_singleton_method(:etc) { root_path/"homebrew/etc" }
+      end
+    end
+    let(:runner) { Homebrew::InstallSteps::Runner.new(context: php_context) }
+
+    before do
+      stub_const("HOMEBREW_PREFIX", homebrew_prefix)
+      (pear_prefix/".channels/.alias").mkpath
+      (pear_prefix/".channels/pear.php.net.reg").write "channel"
+      (pear_prefix/".channels/.alias/pear.txt").write "alias"
+      (pear_prefix/".depdblock").write "lock"
+      (homebrew_prefix/"share").mkpath
+      File.symlink root/"missing-pecl", root/"prefix/pecl"
+      allow(runner).to receive(:run_command_output)
+        .with(root/"prefix/bin/php-config", "--extension-dir")
+        .and_return("/usr/local/lib/php/20240924\n")
+      allow(runner).to receive(:run_command)
+    end
+
+    specify "updates PEAR, PECL and opcache configuration", :aggregate_failures do
+      expect(runner).to receive(:run_command).with(
+        root/"prefix/bin/pear", "config-set", "ext_dir", pecl_path/"20240924", "system"
+      ).ordered
+      expect(runner).to receive(:run_command).with(root/"prefix/bin/pear", "update-channels").ordered
+
+      runner.run(steps)
+
+      expect((pear_prefix/".channels/.alias").stat.mode & 0777).to eq(0755)
+      expect((pear_prefix/".channels/pear.php.net.reg").stat.mode & 0777).to eq(0644)
+      expect((pear_prefix/".channels/.alias/pear.txt").stat.mode & 0777).to eq(0644)
+      expect(root/"prefix/pecl").to be_a_symlink
+      expect((root/"prefix/pecl").readlink).to eq(pecl_path)
+      expect(pecl_path/"20240924").to be_a_directory
+      expect(homebrew_prefix/"share/pear@8.4/.depdblock").to exist
+      expect(ext_config_path.read).to eq <<~INI
+        [opcache]
+        zend_extension="#{root}/opt/php@8.4/lib/php/20240924/opcache.so"
+      INI
+    end
+
+    specify "only replaces the active opcache extension setting" do
+      ext_config_path.dirname.mkpath
+      ext_config_path.write <<~INI
+        ; zend_extension=keep.so
+          zend_extension = old.so
+        description=zend_extension=also-keep
+      INI
+
+      runner.run(steps)
+
+      expect(ext_config_path.read).to eq <<~INI
+        ; zend_extension=keep.so
+        zend_extension="#{root}/opt/php@8.4/lib/php/20240924/opcache.so"
+        description=zend_extension=also-keep
+      INI
+    end
+  end
+
   describe "runs gtk_update_icon_cache rebuild action" do
     let(:formula) { instance_double(Formula, opt_bin: root/"opt/bin") }
     let(:steps) do
