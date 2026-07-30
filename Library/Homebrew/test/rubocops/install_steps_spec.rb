@@ -6,8 +6,15 @@ require "rubocops/install_steps"
 RSpec.describe RuboCop::Cop::FormulaAudit::InstallSteps do
   subject(:cop) { described_class.new }
 
-  it "allows `post_install` and `post_install_steps` during incremental conversion" do
-    expect_no_offenses(<<~RUBY)
+  it "only permits implemented install step methods" do
+    expect(Homebrew::InstallSteps::DSL.public_instance_methods).to include(
+      *(RuboCop::Cop::InstallStepsHelper::ALLOWED_STEP_METHODS |
+        RuboCop::Cop::InstallStepsHelper::CASK_ALLOWED_STEP_METHODS),
+    )
+  end
+
+  it "allows `post_install` and `post_install_steps` in third-party taps during incremental conversion" do
+    expect_no_offenses(<<~RUBY, "/homebrew-example/Formula/f/foo.rb")
       class Foo < Formula
         url "https://brew.sh/foo-1.0.tgz"
 
@@ -16,6 +23,21 @@ RSpec.describe RuboCop::Cop::FormulaAudit::InstallSteps do
         end
 
         def post_install; end
+      end
+    RUBY
+  end
+
+  it "rejects `post_install` in homebrew/core" do
+    expect_offense(<<~RUBY, "/homebrew-core/Formula/f/foo.rb")
+      class Foo < Formula
+        url "https://brew.sh/foo-1.0.tgz"
+
+        post_install_steps do
+          touch "foo/state"
+        end
+
+        def post_install; end
+        ^^^^^^^^^^^^^^^^^^^^^ FormulaAudit/InstallSteps: Formulae in homebrew/core must use `post_install_steps` instead of `post_install`.
       end
     RUBY
   end

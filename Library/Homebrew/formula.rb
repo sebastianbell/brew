@@ -1574,7 +1574,7 @@ class Formula
 
   delegate pour_bottle_check_unsatisfied_reason: :"self.class"
 
-  # Can be overridden to run commands on both source and bottle installation.
+  # odeprecated
   sig { overridable.void }
   def post_install; end
 

@@ -21,6 +21,7 @@ module RuboCop
           }.freeze,
           T::Hash[Symbol, Symbol],
         )
+        LEGACY_FLIGHT_MSG = "Casks in homebrew/cask must use `%<steps>s` instead of `%<flight>s`."
         KEYCHAIN_HASHES_SOURCE =
           'hashes = stdout.lines.grep(/^SHA-256 hash:/) { |l| l.split(":").second.strip }'
         KEYCHAIN_DELETE_SOURCE = T.let(
@@ -58,6 +59,12 @@ module RuboCop
           stanzas = cask_block.stanzas
           INSTALL_STEP_PAIRS.each do |flight_block, steps_block|
             next unless (flight_stanza = stanzas.find { |stanza| stanza.stanza_name == flight_block })
+
+            if cask_tap == "homebrew-cask"
+              add_offense(flight_stanza.method_node,
+                          message: format(LEGACY_FLIGHT_MSG, steps: steps_block, flight: flight_block))
+              next
+            end
 
             steps_stanza = stanzas.find { |stanza| stanza.stanza_name == steps_block }
             audit_flight_block(flight_stanza, steps_block) if steps_stanza.nil?

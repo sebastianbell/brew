@@ -15,6 +15,8 @@ module RuboCop
         # TODO: Re-enable when formula `post_install` and `post_install_steps`
         # cannot coexist after the incremental conversion bridge is removed.
         # CONFLICT_MSG = "`post_install` and `post_install_steps` cannot both be used."
+        LEGACY_POST_INSTALL_MSG =
+          "Formulae in homebrew/core must use `post_install_steps` instead of `post_install`."
         REDUNDANT_SERVICE_PATH_DIRS_MSG = "`%<block>s` only creates directories created by `brew services`."
         CERTIFICATE_REMOVE_SOURCE = 'rm(pkgetc/"cert.pem") if (pkgetc/"cert.pem").exist?'
         CERTIFICATE_INSTALL_SYMLINK_SOURCE =
@@ -80,6 +82,11 @@ module RuboCop
           service_path_dirs = service_path_dirs(find_block(body_node, :service))
           post_install_steps_block = find_block(body_node, :post_install_steps)
           post_install_method = find_method_def(body_node, :post_install)
+
+          if formula_tap == "homebrew-core" && post_install_method
+            add_offense(post_install_method, message: LEGACY_POST_INSTALL_MSG)
+            post_install_method = nil
+          end
 
           # TODO: Re-enable when formula `post_install` and
           # `post_install_steps` cannot coexist after the incremental
