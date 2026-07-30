@@ -971,6 +971,73 @@ RSpec.describe Homebrew::InstallSteps do
     end
   end
 
+  specify "dispatches CPython and PyPy bootstrap" do
+    steps = Homebrew::InstallSteps::DSL.build do
+      bootstrap_cpython
+      bootstrap_pypy abi_version: "3.10"
+    end
+
+    runner = Homebrew::InstallSteps::Runner.new(context:)
+    expect(runner).to receive(:run_bootstrap_cpython).ordered
+    expect(runner).to receive(:run_bootstrap_pypy).with("3.10").ordered
+
+    runner.run(steps)
+  end
+
+  specify "replaces an existing CPython site-packages directory with a symlink", :aggregate_failures do
+    require "language/python"
+
+    python = formula do
+      T.bind(self, T.class_of(Formula))
+      url "foo-3.12.1"
+    end
+    allow(python).to receive(:prefix).and_return(root/"prefix")
+    stub_const("HOMEBREW_PREFIX", root/"homebrew")
+    allow(Homebrew::SimulateSystem).to receive(:simulating_or_running_on_macos?).and_return(false)
+    site_packages = root/"homebrew/lib/python3.12/site-packages"
+    allow(Language::Python).to receive(:homebrew_site_packages).and_return(site_packages)
+    resources = %w[setuptools pip wheel].to_h do |name|
+      [name, instance_double(Resource, version: Version.new("1.0"))]
+    end
+    allow(python).to receive(:resource) { |name| resources[name] }
+    site_packages_cellar = root/"prefix/lib/python3.12/site-packages"
+    (site_packages_cellar/"old.pth").tap do |path|
+      path.dirname.mkpath
+      path.write "old"
+    end
+    (site_packages/"bin").mkpath
+    (site_packages/"bin/pip3.12").write "pip"
+    (site_packages/"bin/wheel").write "wheel"
+    (root/"prefix/bin").mkpath
+    (root/"homebrew/bin").mkpath
+    runner = Homebrew::InstallSteps::Runner.new(context: python)
+    allow(runner).to receive(:run_command)
+    steps = Homebrew::InstallSteps::DSL.build do
+      bootstrap_cpython
+    end
+
+    runner.run(steps)
+
+    expect(site_packages_cellar).to be_a_symlink
+    expect(site_packages_cellar.realpath).to eq(site_packages.realpath)
+    expect(site_packages_cellar/"old.pth").not_to exist
+  end
+
+  specify "makes CPython venv activation script templates writable", :aggregate_failures do
+    script = root/"lib/venv/scripts/common/activate"
+    directory = root/"lib/venv/scripts/directory"
+    script.dirname.mkpath
+    directory.mkpath
+    script.write "activate"
+    FileUtils.chmod 0444, script
+    FileUtils.chmod 0555, directory
+
+    Homebrew::InstallSteps::Runner.new(context:).make_cpython_venv_activation_scripts_writable(root/"lib")
+
+    expect(script.stat.mode & 0200).to eq(0200)
+    expect(directory.stat.mode & 0200).to be_zero
+  end
+
   describe "runs gtk_update_icon_cache rebuild action" do
     let(:formula) { instance_double(Formula, opt_bin: root/"opt/bin") }
     let(:steps) do
