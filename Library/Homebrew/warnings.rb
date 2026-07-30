@@ -13,6 +13,9 @@ module Warnings
   end
 
   COMMON_WARNINGS = T.let({
+    cgi:           [
+      /CGI library is removed from Ruby 4\.0\./,
+    ],
     parser_syntax: [
       %r{warning: parser/current is loading parser/ruby\d+, which recognizes},
       /warning: \d+\.\d+\.\d+-compliant syntax, but you are running \d+\.\d+\.\d+\./,

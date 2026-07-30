@@ -4,6 +4,12 @@
 require "warnings"
 
 RSpec.describe Warnings do
+  it "ignores the Ruby 4 CGI compatibility warning" do
+    expect do
+      described_class.ignore(:cgi) { Kernel.warn("CGI library is removed from Ruby 4.0.\n", uplevel: 1) }
+    end.not_to output.to_stderr
+  end
+
   it "restores ignored warnings after an exception" do
     expect do
       described_class.ignore(/ignored warning/) { raise "failure" }

@@ -350,8 +350,10 @@ RSpec.configure do |config|
 
       begin
         timeout = example.metadata.fetch(:timeout, 60)
-        Timeout.timeout(timeout) do
-          example.run
+        Warnings.ignore :cgi do
+          Timeout.timeout(timeout) do
+            example.run
+          end
         end
       rescue Timeout::Error => e
         example.example.set_exception(e)
