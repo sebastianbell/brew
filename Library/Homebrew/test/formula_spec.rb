@@ -1219,7 +1219,6 @@ RSpec.describe Formula do
         "type"                => "symlink",
         "source"              => { "base" => "relative", "path" => "move-target" },
         "target"              => { "base" => "prefix", "path" => "linked-target" },
-        "overwrite"           => false,
         "remove_on_uninstall" => true,
       },
     ])
